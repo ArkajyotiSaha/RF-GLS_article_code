@@ -1,0 +1,162 @@
+rm(list = ls())
+list.of.packages <- c("Rcpp", "RcppArmadillo", "data.table", "matrixStats", "BRISC", "lhs", "rdist", "MASS", "emdbook", "RandomForestsGLS")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+library(Rcpp)
+library(RcppArmadillo)
+library(data.table)
+setDTthreads(1)
+Rcpp::sourceCpp("final_spRF_new_bigger_oral.cpp")
+
+#temp <- commandArgs(TRUE)
+#iter_tot <- (as.numeric(temp[1])-1)*24+as.numeric(temp[2])
+iter_tot <- 1 #1..2700
+indica <- iter_tot
+
+fried <- function(xx)
+{
+  y <- rep(0, nrow(xx))
+  for(i in 1:nrow(xx)){
+    x1 <- xx[i,1]
+    
+    y[i] <-  10*sin(pi * x1)
+  }
+  return(y)
+}
+
+Coeffmatrix<-expand.grid(iter = 1:100, sigma.sq = c(1,5,10), fraction = c(1/4,2/4,3/4),
+                         percent = c(1/100,10/100,25/100))
+
+iter <- Coeffmatrix$iter[indica]
+n = 1000
+
+
+set.seed(iter+1)
+library(lhs)
+xmat <- randomLHS(n, 1)
+
+
+set.seed(iter+2)
+s1 <- runif(n,0, 1)
+set.seed(iter+3)
+s2 <- runif(n,0, 1)
+
+smat <- cbind(s1, s2)
+
+rmvn <- function(n, mu = 0, V = matrix(1)){
+  p <- length(mu)
+  if(any(is.na(match(dim(V),p))))
+    stop("Dimension not right!")
+  D <- chol(V)
+  t(matrix(rnorm(n*p), ncol=p)%*%D + rep(mu,rep(n,p)))
+}
+
+sigma.sq = Coeffmatrix$sigma.sq[indica]
+phi = 3/(sqrt(2)*Coeffmatrix$fraction[indica])
+tau.sq = Coeffmatrix$sigma.sq[indica] * Coeffmatrix$percent[indica]
+D200 <- as.matrix(dist(smat))
+R200 <- exp(-phi*D200)
+w200 <- (sigma.sq)^0.5 * rmvn(1, rep(0,n), R200)
+
+
+set.seed(iter+4)
+y200 <- rnorm(n, fried(xmat) + w200, sqrt(tau.sq))
+
+
+set.seed(iter+101)
+simp_row <- sample(1:10)
+set.seed(iter+102)
+simp_col <- sample(1:10)
+
+stest_index <- 0
+
+for(ip in 1:10){
+  stest_index <- c(stest_index, which(smat[,1]< simp_row[ip]*0.1 & smat[,1] >= (simp_row[ip]-1)*0.1 & smat[,2]< simp_col[ip]*0.1  & smat[,2]>= (simp_col[ip]-1)*0.1))
+}
+
+stest_index <- stest_index[-1]
+stest <- smat[stest_index,]
+strain <- smat[-stest_index,]
+
+xtrain200 <- as.matrix(xmat[-stest_index,])
+strain200 <- strain
+ytrain200 <- y200[-stest_index]
+fxtrain200  <- fried(xtrain200)
+
+xtest200 <- as.matrix(xmat[stest_index,])
+stest200 <- stest
+ytest200 <- y200[stest_index]
+fxtest200 <- fried(xtest200)
+
+
+#set.seed(iter+5)
+#xestimation200 <- randomLHS(1000, 5)
+xestimation200 <- as.matrix(seq(0,1, by = 1/1000))
+colnames(xestimation200) <- colnames(xtrain200)
+fxestimation200 <- fried(xestimation200)
+
+ntree = 100
+nthsize <- 20
+n.neighbors.number <- 20
+pinv_choice_number <- 1
+
+set.seed(iter+7)
+sp <- randomForest::randomForest(xtrain200, ytrain200, ntree = ntree,nodesize = 5)
+
+rftest200 <- predict(sp, xtest200)
+rfestimation200 <- predict(sp, xestimation200)
+rf_estimation200_res <- mean((rfestimation200 - fxestimation200)^2, trim = 0.0) #rf_estimation_error
+rf_res <- mean((rftest200 - ytest200)^2, trim = 0.0)
+
+rftrain200 <- predict(sp, xtrain200)
+rf_residual <- ytrain200 - rftrain200
+
+
+library(rdist)
+Dis <- pdist(strain200)
+dis_pred <- cdist(stest200, strain200)
+set.seed(iter+7)
+sp_hengl <- randomForest::randomForest(cbind(xtrain200,Dis), ytrain200, xtest = cbind(xtest200,dis_pred), ntree = ntree,nthsize=5, importance = T, localImp=T)
+#sp_out_hengl <- predict(sp_hengl, cbind(xtest200,dis_pred))
+rf_res_hengl <- mean((sp_hengl$test$predicted - ytest200)^2, trim = 0.0)
+sp_out_hengl <- sp_hengl$test$predicted
+
+
+set.seed(iter+7)
+sp_lat_long <- randomForest::randomForest(cbind(xtrain200,strain200), ytrain200, xtest = cbind(xtest200, stest200), ntree = ntree,nodesize = nthsize, importance = T, localImp= T)
+rf_res_lat_long <- mean((sp_lat_long$test$predicted - ytest200)^2, trim = 0.0)
+sp_out_lat_long <- sp_lat_long$test$predicted
+
+
+library(BRISC)
+est_theta <- BRISC_estimation(strain200, y = c(rf_residual), x = matrix(1, nrow(xtrain200), 1), n.neighbors = n.neighbors.number)
+
+total_x_prediction <- rbind(xtest200, xestimation200, xtrain200)
+
+library(RandomForestsGLS)
+set.seed(iter+8)
+sprf_res <- RFGLS_estimate_spatial(coords = strain200, y = ytrain200, X = xtrain200, ntree = ntree, cov.model = "exponential", Xtest = total_x_prediction, nthsize = nthsize, sigma.sq = est_theta$Theta[1], tau.sq = est_theta$Theta[2],phi = est_theta$Theta[3], n.neighbors = n.neighbors.number, pinv_choice = pinv_choice_number)
+
+rfgls_unknown_test200_res <- mean((rowMeans(sprf_res$predicted_matrix)[1:length(fxtest200)] - fxtest200)^2, trim = 0.0)
+rfgls_unknown_estimation200_res <- mean((rowMeans(sprf_res$predicted_matrix)[(length(fxtest200)+1):(nrow(xtest200) + nrow(xestimation200))] - fxestimation200)^2, trim = 0.0) #rfgls_estimation_error
+
+est_theta_ols <- est_theta
+
+rfgls_insample <- rowMeans(sprf_res$predicted_matrix[(nrow(xtest200) + nrow(xestimation200)+1):nrow(sprf_res$predicted_matrix),])
+rfgls_residual <- ytrain200 - rfgls_insample
+
+est_theta_gls <- BRISC_estimation(strain200, y = c(rfgls_residual), x = matrix(1, nrow(xtrain200), 1), n.neighbors = n.neighbors.number)
+
+
+pred_gls_spatial <- BRISC_prediction(BRISC_Out = est_theta_gls, X.0 = matrix(1, nrow(xtest200), 1), coords.0 = stest200)
+pred_ols_spatial <- BRISC_prediction(BRISC_Out = est_theta_ols, X.0 = matrix(1, nrow(xtest200), 1), coords.0 = stest200)
+
+
+pred_ols = rftest200 + pred_ols_spatial$prediction
+pred_gls = rowMeans(sprf_res$predicted_matrix)[1:length(fxtest200)] + pred_gls_spatial$prediction
+
+rf_res_spatial <- mean((pred_ols - ytest200)^2) #rf_rk_prediction_error
+rfgls_res_spatial <- mean((pred_gls - ytest200)^2) #rfgls_prediction_error
+
+

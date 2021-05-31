@@ -127,7 +127,7 @@ library(BRISC)
 est_theta <- BRISC_estimation(strain200, y = c(rf_residual), x = matrix(1, nrow(xtrain200), 1), n.neighbors = n.neighbors.number)
 
 total_x_prediction <- rbind(xtest200, xestimation200)
-
+est_theta$Beta <- 0
 est_theta$Theta[1] <- sigma.sq
 est_theta$Theta[2] <- tau.sq
 est_theta$Theta[3] <- phi
@@ -153,7 +153,7 @@ rfgls_insample <- rowMeans(sprf_res[[6]])
 rfgls_residual <- ytrain200 - rfgls_insample
 
 est_theta_gls <- BRISC_estimation(strain200, y = c(rfgls_residual), x = matrix(1, nrow(xtrain200), 1), n.neighbors = n.neighbors.number)
-
+est_theta_gls$Beta <- 0
 est_theta_gls$Theta[1] <- sigma.sq
 est_theta_gls$Theta[2] <- tau.sq
 est_theta_gls$Theta[3] <- phi

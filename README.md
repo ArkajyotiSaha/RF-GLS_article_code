@@ -3,7 +3,23 @@
 
 Please download the folder https://github.com/ArkajyotiSaha/RF-GLS_article_code/tree/main/RF-GLS_article_code. TIn order to run the .R codes please set the working directory of R to this folder.
 
-We briefly describe the codes corresponding to each of the plots in the anuscript; in parenthesis, we mention the average time required for running the function in cluster (24-core Intel(R) Xeon(R) CPU E5-2650 v4 processor with 2.20GHz).
+## Function description:
+
+* m1_250.R, m2_250.R, m3_250.R : Estimation & Prediction with correctly specified model, with n = 250, parameters unknown for m = m_1, m_2 and m_3 respectively.
+* m1_250_known.R, m2_250_known.R : Estimation & Prediction with correctly specified model, with n = 250, parameters known for m = m_1, and m_2 respectively.
+* m1_1000.R, m2_1000.R: Estimation & Prediction with correctly specified model with NNGP approximation, with n = 1000, parameters unknown for m = m_1, and m_2 respectively.
+* m1_matern_misspec.R, m2_matern_misspec.R, m3_matern_misspec.R: Estimation & Prediction with misspecified model, errors generated from matern covariance function with n = 250, for m = m_1, m_2 and m_3 respectively.
+* m1_smooth_misspec.R, m2_smooth_misspec.R, m3_smooth_misspec.R: Estimation & Prediction with misspecified model, errors generated from smooth function with n = 250, for m = m_1, m_2 and m_3 respectively.
+
+## Runtime:
+
+T = Average time required for running the function in cluster (24-core Intel(R) Xeon(R) CPU E5-2650 v4 processor with 2.20GHz) for one seed.
+
+* m = m_1 & m_2 (M_{try} = 1), n = 250; T = 25 mins
+* m = m_1 & m_2 (M_{try} = 1), n = 1000; T = 2 hrs. 5 mins
+* m = m_3, n = 250; T = 2 hrs.
+
+## Plot vs. Function
 
 * Figure 1 : cost_function.R (<5 mins)
 * Figure 2 : m2_250.R (~25 mins)
